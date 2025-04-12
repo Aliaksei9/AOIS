@@ -1,5 +1,5 @@
 import unittest
-from BooleanMinimizer import BooleanMinimizer
+from boolean_minimizer import BooleanMinimizer
 
 class TestBooleanMinimizer(unittest.TestCase):
     def test_extract_variables(self):
@@ -77,6 +77,18 @@ class TestBooleanMinimizer(unittest.TestCase):
         minimizer = BooleanMinimizer(formula, 1)
         result = minimizer.minimize_calculative()
         self.assertEqual(result, [['A', 'B']])
+    
+    def test_print_karnaugh_map_table_5_var_SDNF(self):
+        formula = "(!A/\\!B/\\!C/\\!D/\\E) \\/ (!A/\\!B/\\!C/\\D/\\E) \\/ (!A/\\!B/\\C/\\!D/\\E) \\/ (!A/\\!B/\\C/\\D/\\E) \\/ (!A/\\B/\\!C/\\!D/\\E) \\/ (!A/\\B/\\!C/\\D/\\E) \\/ (!A/\\B/\\C/\\!D/\\E) \\/ (!A/\\B/\\C/\\D/\\!E) \\/ (A/\\!B/\\!C/\\!D/\\E) \\/ (A/\\!B/\\!C/\\D/\\E) \\/ (A/\\!B/\\C/\\!D/\\E) \\/ (A/\\!B/\\C/\\D/\\!E) \\/ (A/\\B/\\!C/\\!D/\\E) \\/ (A/\\B/\\!C/\\D/\\E) \\/ (A/\\B/\\C/\\!D/\\E) \\/ (A/\\B/\\C/\\D/\\!E)"
+        minimizer = BooleanMinimizer(formula, 1)
+        result = minimizer.minimize_karnaugh_table_5_var()
+        self.assertEqual(result, [['-', 'B', 'C', 'D', '!E'], ['A', '-', 'C', 'D', '!E'], ['!A', '!B', '-', '-', 'E'], ['-', '-', '!C', '-', 'E'], ['-', '-', '-', '!D', 'E']])
+        
+    def test_print_karnaugh_map_table_5_var_SCNF(self):
+        formula = "(A\\/B\\/C\\/D\\/E) /\\ (A\\/B\\/C\\/!D\\/E) /\\ (A\\/B\\/!C\\/D\\/E) /\\ (A\\/B\\/!C\\/!D\\/E) /\\ (A\\/!B\\/C\\/D\\/E) /\\ (A\\/!B\\/C\\/!D\\/E) /\\ (A\\/!B\\/!C\\/D\\/E) /\\ (A\\/!B\\/!C\\/!D\\/!E) /\\ (!A\\/B\\/C\\/D\\/E) /\\ (!A\\/B\\/C\\/!D\\/E) /\\ (!A\\/B\\/!C\\/D\\/E) /\\ (!A\\/B\\/!C\\/!D\\/!E) /\\ (!A\\/!B\\/C\\/D\\/E) /\\ (!A\\/!B\\/C\\/!D\\/E) /\\ (!A\\/!B\\/!C\\/D\\/E) /\\ (!A\\/!B\\/!C\\/!D\\/!E)"
+        minimizer = BooleanMinimizer(formula, 2)
+        result = minimizer.minimize_karnaugh_table_5_var()
+        self.assertEqual(result, [['A', 'B', '-', '-', 'E'], ['-', '-', 'C', '-', 'E'], ['-', '-', '-', 'D', 'E'], ['-', '!B', '!C', '!D', '!E'], ['!A', '-', '!C', '!D', '!E']])    
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,10 +1,21 @@
 # Основная программа
-from BooleanMinimizer import BooleanMinimizer
+from boolean_minimizer import BooleanMinimizer
+from parser import *
+from truth_table_generator import *
 def main():
+    expr=input("Введите логическое выражение")
+    parser = Parser(expr)
+    tree = parser.parse()
+    generator = TruthTableGenerator(tree, sorted(set(token for token in parser.tokens if token.isalnum())))    
+    formulaSDNF, formulaSKNF = generator.generate() 
+    print(formulaSKNF)
     form_type = int(input("Введите тип формы 1, если формула является СДНФ; 2, если СКНФ: "))
-    formula = input("Введите формулу (например, (A/\\B/\\C)\\/(!A/\\B/\\C) для СДНФ): ").strip()
-    minimizer = BooleanMinimizer(formula, form_type)
-
+    if form_type==1:
+        minimizer = BooleanMinimizer(formulaSDNF, form_type)
+    else:
+        minimizer = BooleanMinimizer(formulaSKNF, form_type)
+    result = minimizer.minimize_karnaugh_table_5_var()
+    print(result)
     print("\nВыберите метод минимизации:")
     print("1. Расчетный метод")
     print("2. Расчетно-табличный метод")
