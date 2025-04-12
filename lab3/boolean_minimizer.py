@@ -380,10 +380,107 @@ class BooleanMinimizer:
                 cells.append(val)
             print(row_labels[r].ljust(10) + "\t" + "\t".join(cells))
         
+    def candidate_cells(self, karnaugh_table, layer, start_r, start_c, l_size, r_size, c_size):
+        """
+        Генерирует множество ячеек (cells) для заданного прямоугольного блока
+        на карте Карно, исходя из начальных координат, размера по слоям (l_size),
+        строкам (r_size) и столбцам (c_size). При этом проверяется, что все ячейки 
+        в блоке имеют требуемое значение (desired), зависящее от типа формы.
+        Если хотя бы одна ячейка не удовлетворяет условию, возвращается None.
+        """
+        cells = set()
+        desired = True if self.form_type == 1 else False
+        for dl in range(l_size):
+            current_layer = layer + dl
+            for dr in range(r_size):
+                r = (start_r + dr) % 4
+                for dc in range(c_size):
+                    c = (start_c + dc) % 4
+                    cells.add((current_layer, r, c))
+                    if karnaugh_table[current_layer][r][c] != desired:
+                        return None  # Блок невалиден, если найдено несоответствие
+        return cells
+
+    def build_implicant_from_cells(self, cells, gray_order):
+        """
+        Строит импликанту (список литералов) по заданному множеству ячеек.
+        Для каждой переменной берётся значение из назначений ячеек, если оно одинаково,
+        иначе ставится '-' (т.е. переменная не зависит от группы).
+        Также применяются корректировки, если блок покрывает все строки/столбцы или слои.
+        """
+        # Собираем назначения для всех ячеек группы
+        group_assignments = []
+        for (lay, r, c) in cells:
+            assignment = self.get_assignment_from_cell(lay, r, c, gray_order)
+            group_assignments.append([assignment[var] for var in self.variables])
+        
+        implicant = []
+        for i in range(len(self.variables)):
+            vals = {assign[i] for assign in group_assignments}
+            if len(vals) == 1:
+                val = next(iter(vals))
+                if self.form_type == 1:
+                    literal = self.variables[i] if val else f"!{self.variables[i]}"
+                else:
+                    # Для СКНФ правило обратное: 
+                    literal = self.variables[i] if not val else f"!{self.variables[i]}"
+                implicant.append(literal)
+            else:
+                implicant.append('-')
+        return implicant
+
+    def adjust_implicant(self, implicant, r_size, c_size, l_size):
+        """
+        Применяет корректировку импликанты: 
+         - Если блок покрывает все строки (r_size == 4) → пропускаем переменные A и B.
+         - Если блок покрывает все столбцы (c_size == 4) → пропускаем переменные C и D.
+         - Если блок покрывает оба слоя (l_size == 2) → пропускаем переменную E.
+        """
+        if r_size == 4:
+            implicant[0] = '-'
+            implicant[1] = '-'
+        if c_size == 4:
+            implicant[2] = '-'
+            implicant[3] = '-'
+        if l_size == 2:
+            implicant[4] = '-'
+        return implicant
+
+    def compute_raw_candidates(self, karnaugh_table, gray_order):
+        """
+        Перебирает все возможные прямоугольные блоки на карте Карно и 
+        собирает валидных кандидатов в виде пар (импликанта, cell_set).
+        """
+        raw_candidates = []
+        # Перебор размеров блока по слоям (l_size)
+        for l_size in [1, 2]:
+            for layer in range(2):
+                # Если берём два слоя, обрабатываем только с layer 0
+                if l_size == 2 and layer != 0:
+                    continue
+                # Перебор размеров блока по строкам
+                for r_size in [1, 2, 4]:
+                    for start_r in range(4):
+                        # Перебор размеров блока по столбцам
+                        for c_size in [1, 2, 4]:
+                            for start_c in range(4):
+                                cells = self.candidate_cells(karnaugh_table, layer, start_r, start_c, l_size, r_size, c_size)
+                                if cells is None:
+                                    continue
+                                # Формируем импликанту по найденной группе ячеек
+                                implicant = self.build_implicant_from_cells(cells, gray_order)
+                                implicant = self.adjust_implicant(implicant, r_size, c_size, l_size)
+                                raw_candidates.append((implicant, cells))
+        return raw_candidates
+
     def minimize_karnaugh_table_5_var(self):
+        """
+        Минимизация СДНФ/СКНФ для пяти переменных с использованием табличного метода на основе карты Карно,
+        с учётом двух 4×4 карт (x5 = 0 и x5 = 1) и циклической смежности.
+        """
         print("\nМинимизация методом карты Карно:")
-        # 1. Построение таблицы истинности: две карты 4×4 для x5=0 и x5=1.
         gray_order = [0, 1, 3, 2]
+        # Построение карты Карно: создаём две 4×4 таблицы
         karnaugh_table = [[[False for _ in range(4)] for _ in range(4)] for _ in range(2)]
         minterms = []
         for layer in range(2):
@@ -392,75 +489,24 @@ class BooleanMinimizer:
                     assign = self.get_assignment_from_cell(layer, r, c, gray_order)
                     val = self.evaluate_formula(assign)
                     karnaugh_table[layer][r][c] = val
-                    # Для СДНФ собираем те ячейки, где функция == True, для СКНФ – где функция == False.
                     if (self.form_type == 1 and val) or (self.form_type == 2 and not val):
                         mt = tuple(assign[var] for var in self.variables)
                         if mt not in minterms:
                             minterms.append(mt)
-        print("Множество минтермов (ячейки, покрывающие критическое значение):")
+        print("Множество минтермов:")
         for mt in minterms:
             print(mt)
-    
-        # 2. Вывод карты Карно в требуемом формате.
+
         print("\nКарта Карно:")
         self.print_karnaugh_map_table(karnaugh_table)
-    
-        # 3. Поиск кандидатов-импликант.
-        raw_candidates = []  # каждый кандидат: (импликанта, cell_set)
-        for l_size in [1, 2]:
-            for layer in range(2):
-                if l_size == 2 and layer != 0:
-                    continue
-                for r_size in [1, 2, 4]:
-                    for start_r in range(4):
-                        for c_size in [1, 2, 4]:
-                            for start_c in range(4):
-                                cells = set()
-                                valid = True
-                                for dl in range(l_size):
-                                    current_layer = layer + dl
-                                    for dr in range(r_size):
-                                        r = (start_r + dr) % 4
-                                        for dc in range(c_size):
-                                            c = (start_c + dc) % 4
-                                            cells.add((current_layer, r, c))
-                                            desired = True if self.form_type == 1 else False
-                                            if karnaugh_table[current_layer][r][c] != desired:
-                                                valid = False
-                                                break
-                                        if not valid:
-                                            break
-                                    if not valid:
-                                        break
-                                if valid:
-                                    group_assignments = []
-                                    for (lay, r, c) in cells:
-                                        group_assignments.append(
-                                            [self.get_assignment_from_cell(lay, r, c, gray_order)[var] for var in self.variables]
-                                        )
-                                    implicant = []
-                                    for i in range(len(self.variables)):
-                                        vals = {assign[i] for assign in group_assignments}
-                                        if len(vals) == 1:
-                                            val = next(iter(vals))
-                                            if self.form_type == 1:
-                                                literal = self.variables[i] if val else f"!{self.variables[i]}"
-                                            else:
-                                                # Для СКНФ правило обратное:
-                                                literal = self.variables[i] if not val else f"!{self.variables[i]}"
-                                            implicant.append(literal)
-                                        else:
-                                            implicant.append('-')
-                                    if r_size == 4:
-                                        implicant[0] = '-'
-                                        implicant[1] = '-'
-                                    if c_size == 4:
-                                        implicant[2] = '-'
-                                        implicant[3] = '-'
-                                    if l_size == 2:
-                                        implicant[4] = '-'
-                                    raw_candidates.append((implicant, cells))
-        # 4. Фильтрация кандидатов по максимальности.
+
+        # Получение «сырых» кандидатов-импликант
+        raw_candidates = self.compute_raw_candidates(karnaugh_table, gray_order)
+        print("\nНайденные кандидаты-импликанты (до фильтрации):")
+        print(self.implicants_to_string([cand for cand, _ in raw_candidates]))
+
+        # Далее – фильтрация кандидатов по максимальности, построение таблицы покрытия 
+        # и жадный выбор минимального покрытия. (Эта часть не изменилась.)
         filtered_candidates = []
         for i, (cand_i, cells_i) in enumerate(raw_candidates):
             maximal = True
@@ -473,11 +519,12 @@ class BooleanMinimizer:
                 filtered_candidates.append(cand_i)
         print("\nНайденные кандидаты-импликанты (после фильтрации по максимальности):")
         print(self.implicants_to_string(filtered_candidates))
-    
-        # 5. Формирование таблицы покрытия и жадный выбор минимального покрытия.
+
+        # Формирование таблицы покрытия
         coverage_table = {}
         for i, candidate in enumerate(filtered_candidates):
             coverage_table[i] = [self.candidate_covers(candidate, mt) for mt in minterms]
+        # Жадное покрытие
         essential = []
         covered = set()
         for col in range(len(minterms)):
@@ -500,11 +547,12 @@ class BooleanMinimizer:
             essential.append(imp_idx)
             covered.update(j for j, val in enumerate(coverage_table[imp_idx]) if val)
             remaining = set(range(len(minterms))) - covered
-    
+
         minimal_cover = [filtered_candidates[i] for i in essential]
         print("\nМинимальная форма (выбранные кандидаты):")
         print(self.implicants_to_string(minimal_cover))
         return minimal_cover
+
     
     def build_kmap(self):
         """Построение линейной карты Карно (в виде списка) с использованием кода Грея.
